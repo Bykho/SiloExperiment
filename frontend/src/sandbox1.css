@@ -1,0 +1,39 @@
+/* General container styling */
+.repo-container {
+    max-width: 600px;
+    margin: 20px auto;
+    text-align: center;
+  }
+  
+  /* List of repositories */
+  .repo-list {
+    list-style-type: none;
+    padding: 0;
+  }
+  
+  /* Each repo item */
+  .repo-item {
+    background: #f8f9fa;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.3s, transform 0.2s;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  
+  /* Hover effect */
+  .repo-item:hover {
+    background: #e9ecef;
+    transform: scale(1.02);
+  }
+  
+  /* Selected repository */
+  .repo-item.selected {
+    background: #007bff;
+    color: white;
+    font-weight: bold;
+    transform: scale(1.05);
+  }
+  
