@@ -1,13 +1,16 @@
 import os
 import re
 import requests
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response, stream_with_context
+import json
 from openai import OpenAI
 import io
 import mimetypes
 import requests
+import time
 from tenacity import retry, stop_after_attempt, wait_exponential
-
+from typing_extensions import override
+from openai import AssistantEventHandler
 
 routes = Blueprint("routes", __name__)
 
@@ -306,3 +309,122 @@ def upload_to_vs():
             "attached_file_ids": attached_file_ids,
             "errors": errors
         })
+    
+
+
+
+############# new additions ##############
+
+
+
+
+
+
+
+
+class OutlineEventHandler(AssistantEventHandler):    
+    def __init__(self):
+        super().__init__()
+        self.queue = []
+    
+    @override
+    def on_text_created(self, text) -> None:
+        # This adds a formatted message to the queue
+        self.queue.append(f"data: {json.dumps({'content': '\\n'})}\n\n")
+          
+    @override
+    def on_text_delta(self, delta, snapshot):
+        if delta.value:
+            print(f"[DEBUG] Delta value: {delta.value}")
+            # This adds a formatted message to the queue
+            self.queue.append(f"data: {json.dumps({'content': delta.value})}\n\n")
+
+@routes.route("/api/generate_outline", methods=["POST"])
+def generate_outline():
+    if not OPENAI_API_KEY or not ASSISTANT_ID:
+        return jsonify({"error": "Missing API keys or IDs"}), 403
+
+    data = request.get_json()
+    repo = data.get("repo")
+    if not repo or "name" not in repo:
+        return jsonify({"error": "Invalid repository data"}), 400
+
+    def event_stream():
+        try:
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            thread = client.beta.threads.create()
+            print(f"[DEBUG] Created thread: {thread.id}")
+            
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=f"Generate an outline for the repository: {repo['name']} that is in the vector store attached to you"
+            )
+
+            handler = OutlineEventHandler()
+            print("[DEBUG] Handler created")
+            
+            # Create a flag to track when the stream is done
+            stream_done = False
+            
+            # Start the streaming in the background
+            def process_stream():
+                nonlocal stream_done
+                try:
+                    with client.beta.threads.runs.stream(
+                        thread_id=thread.id,
+                        assistant_id=ASSISTANT_ID,
+                        instructions="""
+                        Generate a concise, well-structured outline for an engineering portfolio entry based on the repository.
+                        Format the outline as follows:
+                        1. Start with a clear title and brief overview (2-3 sentences)
+                        2. Organize into 5-7 main sections with clear headings (use ### for main headings)
+                        3. Use bullet points for subsections (use - for bullets)
+                        4. Include specific technical details relevant to the repository
+                        5. Add proper spacing between sections using a blank line
+                        6. End with potential discussion points about challenges and solutions
+
+                        Focus on the core technologies, architecture, and unique features of the project.
+                        Keep descriptions brief but informative - aim for clarity over comprehensiveness.
+                        """,  # Added comma here
+                        event_handler=handler
+                    ) as stream:
+                        print("[DEBUG] Stream started")
+                        stream.until_done()
+                        print("[DEBUG] Stream completed")
+                except Exception as e:
+                    print(f"[DEBUG] Error in stream processing: {str(e)}")
+                    handler.queue.append(f"data: {json.dumps({'error': str(e)})}\n\n")
+                finally:
+                    stream_done = True
+            
+            # Start the streaming thread
+            import threading
+            stream_thread = threading.Thread(target=process_stream)
+            stream_thread.start()
+            
+            # Yield events as they become available in the queue
+            while True:
+                if handler.queue:
+                    yield handler.queue.pop(0)
+                elif stream_done:
+                    break
+                else:
+                    # Small sleep to avoid busy waiting
+                    time.sleep(0.1)
+                
+        except Exception as e:
+            print(f"[DEBUG] Error in event stream setup: {str(e)}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(
+        stream_with_context(event_stream()), 
+        content_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Content-Type': 'text/event-stream',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        }
+    )
+
