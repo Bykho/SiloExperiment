@@ -386,7 +386,7 @@ def generate_outline():
                         5. The content of the section must be written as quick descriptive bullet points.
                         6. Include exactly 4 main sections.
 
-                        Do not include any additional text formatting outside of this structure. Do not include this in your response: \n.
+                        Do not include any additional text formatting outside of this structure. IMPORTANT: Do not include the newline escape sequence in your response.
 
                         """,
                         event_handler=handler
@@ -467,7 +467,7 @@ def expand_topic():
     instructions_text = """
     Expand on the following subtopic as part of a larger project. 
     Leverage content from a shared vector store to provide context on how this section relates to the overall project. 
-    Provide detailed, well-structured content with bullet points, technical details, and clear explanations. 
+    Provide detailed, well-structured content with technical details and clear explanations. Do not over use bullet points. Only use bullet points where absolutely necessary. Be smart about this.
     Emphasize the connection between this subtopic and the main project goals, using relevant information from the vector store to enrich the discussion.
     """
 

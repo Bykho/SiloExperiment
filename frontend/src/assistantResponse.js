@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css'; 
-import "./vsBackendResponse.css";  // Reuse the existing CSS
-import ParallelModal from "./parallelModal"; // Import the new modal
+import "./vsBackendResponse.css";
+import ParallelModal from "./parallelModal";
 
 const AssistantResponse = ({ repo, onClose }) => {
   const [text, setText] = useState("");
+  const [editableText, setEditableText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showParallelModal, setShowParallelModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const scrollableRef = useRef(null);
+  const initialRenderRef = useRef(true);
 
   useEffect(() => {
     console.log("Starting fetch for repo:", repo);
@@ -61,14 +65,17 @@ const AssistantResponse = ({ repo, onClose }) => {
             if (line.startsWith('data: ')) {
               try {
                 const content = line.slice(6); // Remove 'data: ' prefix
-                console.log("Raw content:", content);
                 const data = JSON.parse(content);
-                console.log("Parsed data:", data);
                 
                 if (data.error) {
                   setError(data.error);
                 } else if (data.content !== undefined) {
                   setText(prev => prev + data.content);
+                  
+                  // Auto-scroll to bottom as content comes in
+                  if (scrollableRef.current) {
+                    scrollableRef.current.scrollTop = scrollableRef.current.scrollHeight;
+                  }
                 }
               } catch (e) {
                 console.error('Error parsing JSON:', e, 'Line:', line);
@@ -76,6 +83,9 @@ const AssistantResponse = ({ repo, onClose }) => {
             }
           }
         }
+        
+        // Once streaming is done, set the editable text to be the same as the final text
+        setIsEditing(true);
       } catch (error) {
         if (error.name === 'AbortError') {
           console.log('Fetch aborted');
@@ -96,51 +106,95 @@ const AssistantResponse = ({ repo, onClose }) => {
     };
   }, [repo]);
 
+  // Effect to sync text with editableText once when loading is complete
+  useEffect(() => {
+    if (!loading && text && !editableText) {
+      setEditableText(text);
+    }
+  }, [loading, text, editableText]);
+
+  // Handle transition from streaming to editing with a subtle delay
+  useEffect(() => {
+    if (!loading && isEditing && initialRenderRef.current) {
+      initialRenderRef.current = false;
+      
+      // A slight delay helps create a smoother transition to edit mode
+      const timer = setTimeout(() => {
+        if (scrollableRef.current) {
+          scrollableRef.current.classList.add('edit-mode-active');
+        }
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [loading, isEditing]);
+
+  // Handle text editing
+  const handleTextChange = (e) => {
+    setEditableText(e.target.value);
+  };
+
+  // Handle key commands (Ctrl+Enter to parallelize)
+  const handleKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !loading && text) {
+      e.preventDefault();
+      setShowParallelModal(true);
+    }
+  };
+
   return (
     <div className="modal-overlay">
       <div className="modal-content">
         <button className="close-button" onClick={onClose}>✖</button>
         <h3>Help us plan how we are going to build your portfolio</h3>
-        <div className="scrollable-content">
+        
+        <div className="scrollable-content" ref={scrollableRef}>
           {loading && <div className="loading-spinner">Generating outline...</div>}
           {error && <p className="error-message">{error}</p>}
-          {text && (
-            <div className="markdown-content">
-              <ReactMarkdown 
-                remarkPlugins={[remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-                components={{
-                  // Override pre rendering to maintain original style for code blocks
-                  pre: ({node, ...props}) => <pre className="streaming-text" {...props} />
-                }}
-              >
-                {text}
-              </ReactMarkdown>
+          
+          {!loading && isEditing ? (
+            <div className="editable-content">
+              <div className="edit-mode-indicator">
+                You can now refine the outline before parallelization
+              </div>
+              <textarea
+                className="editable-textarea"
+                value={editableText}
+                onChange={handleTextChange}
+                onKeyDown={handleKeyDown}
+                spellCheck="false"
+                aria-label="Editable outline content"
+              />
             </div>
+          ) : (
+            text && (
+              <div className="markdown-content">
+                <ReactMarkdown 
+                  remarkPlugins={[remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                  components={{
+                    pre: ({node, ...props}) => <pre className="streaming-text" {...props} />
+                  }}
+                >
+                  {text}
+                </ReactMarkdown>
+              </div>
+            )
           )}
         </div>
+        
         <button 
           className="parallelize-button" 
           onClick={() => setShowParallelModal(true)}
           disabled={loading || !text}
-          style={{ 
-            position: 'absolute', 
-            bottom: '10px', 
-            right: '10px',
-            padding: '8px 16px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loading || !text ? 'not-allowed' : 'pointer',
-            opacity: loading || !text ? 0.6 : 1
-          }}
+          title="Process each section in parallel (Ctrl+Enter)"
         >
           Parallelize & Expand
         </button>
       </div>
+      
       {showParallelModal && (
-        <ParallelModal text={text} onClose={() => setShowParallelModal(false)} />
+        <ParallelModal text={editableText} onClose={() => setShowParallelModal(false)} />
       )}
     </div>
   );

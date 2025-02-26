@@ -34,12 +34,12 @@
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: #333;
+    color: black;
     transition: color 0.2s ease;
 }
 
 .close-button:hover {
-    color: #b00020;
+    color: black;
 }
 
 /* Card styling */
@@ -73,7 +73,7 @@
 .card-header h4 {
     margin: 0;
     font-size: 1.2rem;
-    color: #24292e;
+    color: black;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -101,11 +101,11 @@
 }
 
 .edit-button:hover {
-    color: #0366d6;
+    color: black;
 }
 
 .refresh-button:hover {
-    color: #28a745;
+    color: black;
 }
 
 /* Loading and error states */
@@ -115,11 +115,11 @@
     align-items: center;
     height: 100px;
     font-style: italic;
-    color: #666;
+    color: black;
 }
 
 .error-message {
-    color: #d73a49;
+    color: black;
     padding: 10px;
     border-radius: 3px;
     background-color: #fff5f5;
@@ -165,7 +165,7 @@
 
 .remove-section-button:hover {
     background-color: #fafbfc;
-    color: #d73a49;
+    color: black;
 }
 
 /* Modal header */
@@ -179,6 +179,7 @@
 
 .modal-header h3 {
     margin: 0;
+    color: black;
 }
 
 .header-actions {
@@ -207,8 +208,8 @@
 
 .section-title-input:focus {
     outline: none;
-    border-color: #0366d6;
-    box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.3);
+    border-color: black;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.3);
 }
 
 /* Button styles */
@@ -224,13 +225,13 @@
 }
 
 .confirm-add-button {
-    background-color: #28a745;
-    border-color: #22863a;
+    background-color: black;
+    border-color: black;
     color: white;
 }
 
 .confirm-add-button:hover:not(:disabled) {
-    background-color: #269f42;
+    background-color: black;
 }
 
 .confirm-add-button:disabled {
@@ -241,7 +242,7 @@
 .cancel-add-button {
     background-color: #fafbfc;
     border-color: #e1e4e8;
-    color: #24292e;
+    color: black;
 }
 
 .cancel-add-button:hover {
@@ -249,8 +250,8 @@
 }
 
 .add-section-button {
-    background-color: #0366d6;
-    border-color: #0366d6;
+    background-color: black;
+    border-color: black;
     color: white;
     display: flex;
     align-items: center;
@@ -258,14 +259,14 @@
 }
 
 .add-section-button:hover {
-    background-color: #035cc1;
+    background-color: black;
 }
 
 .markdown-content {
     text-align: left;
     line-height: 1.6;
     font-size: 14px;
-    color: #24292e;
+    color: black;
     overflow-wrap: break-word;
     padding: 10px;
   }
@@ -286,5 +287,3 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
-
-
