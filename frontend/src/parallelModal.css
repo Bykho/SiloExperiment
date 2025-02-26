@@ -1,0 +1,290 @@
+/* Modal overlay style */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+/* Modal content container */
+.parallel-modal-content {
+    background-color: #fff;
+    border-radius: 10px;
+    width: 95%;
+    max-width: 75vw;
+    max-height: 90vh;
+    padding: 30px;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Close button styling */
+.close-button {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #333;
+    transition: color 0.2s ease;
+}
+
+.close-button:hover {
+    color: #b00020;
+}
+
+/* Card styling */
+.parallel-card {
+    background-color: white;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    transition: box-shadow 0.3s ease;
+    overflow: auto;
+    height: 500px;
+    display: flex;
+    flex-direction: column;
+}
+
+.parallel-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Card header */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #e1e4e8;
+    padding-bottom: 8px;
+}
+
+.card-header h4 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #24292e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+/* Card actions */
+.card-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.card-action-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.card-action-button:hover {
+    background-color: #f6f8fa;
+}
+
+.edit-button:hover {
+    color: #0366d6;
+}
+
+.refresh-button:hover {
+    color: #28a745;
+}
+
+/* Loading and error states */
+.loading-spinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100px;
+    font-style: italic;
+    color: #666;
+}
+
+.error-message {
+    color: #d73a49;
+    padding: 10px;
+    border-radius: 3px;
+    background-color: #fff5f5;
+    border: 1px solid #ffebeb;
+}
+
+/* Grid layout */
+.parallel-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    padding: 20px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+/* Card container */
+.card-container {
+    position: relative;
+}
+
+.remove-section-button {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background-color: #f6f8fa;
+    border: 1px solid #e1e4e8;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+}
+
+.card-container:hover .remove-section-button {
+    opacity: 1;
+}
+
+.remove-section-button:hover {
+    background-color: #fafbfc;
+    color: #d73a49;
+}
+
+/* Modal header */
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e1e4e8;
+}
+
+.modal-header h3 {
+    margin: 0;
+}
+
+.header-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+/* Add section form */
+.add-section-form {
+    display: flex;
+    padding: 16px 20px;
+    background-color: #f6f8fa;
+    border-bottom: 1px solid #e1e4e8;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-title-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #e1e4e8;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.section-title-input:focus {
+    outline: none;
+    border-color: #0366d6;
+    box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.3);
+}
+
+/* Button styles */
+.confirm-add-button, 
+.cancel-add-button,
+.add-section-button {
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.2s;
+}
+
+.confirm-add-button {
+    background-color: #28a745;
+    border-color: #22863a;
+    color: white;
+}
+
+.confirm-add-button:hover:not(:disabled) {
+    background-color: #269f42;
+}
+
+.confirm-add-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.cancel-add-button {
+    background-color: #fafbfc;
+    border-color: #e1e4e8;
+    color: #24292e;
+}
+
+.cancel-add-button:hover {
+    background-color: #f3f4f6;
+}
+
+.add-section-button {
+    background-color: #0366d6;
+    border-color: #0366d6;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.add-section-button:hover {
+    background-color: #035cc1;
+}
+
+.markdown-content {
+    text-align: left;
+    line-height: 1.6;
+    font-size: 14px;
+    color: #24292e;
+    overflow-wrap: break-word;
+    padding: 10px;
+  }
+  
+  .markdown-content * {
+    text-align: left;
+  }
+
+/* Responsive adjustments */
+@media (max-width: 1400px) {
+    .parallel-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .parallel-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+

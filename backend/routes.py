@@ -313,9 +313,10 @@ def upload_to_vs():
 
 
 
-############# new additions ##############
 
 
+
+############# Layer 1 ##############
 
 
 
@@ -335,7 +336,7 @@ class OutlineEventHandler(AssistantEventHandler):
     @override
     def on_text_delta(self, delta, snapshot):
         if delta.value:
-            print(f"[DEBUG] Delta value: {delta.value}")
+            #print(f"[DEBUG] Delta value: {delta.value}")
             # This adds a formatted message to the queue
             self.queue.append(f"data: {json.dumps({'content': delta.value})}\n\n")
 
@@ -375,18 +376,19 @@ def generate_outline():
                         thread_id=thread.id,
                         assistant_id=ASSISTANT_ID,
                         instructions="""
-                        Generate a concise, well-structured outline for an engineering portfolio entry based on the repository.
-                        Format the outline as follows:
-                        1. Start with a clear title and brief overview (2-3 sentences)
-                        2. Organize into 5-7 main sections with clear headings (use ### for main headings)
-                        3. Use bullet points for subsections (use - for bullets)
-                        4. Include specific technical details relevant to the repository
-                        5. Add proper spacing between sections using a blank line
-                        6. End with potential discussion points about challenges and solutions
+                        Generate a concise, well-structured outline for an engineering portfolio entry based solely on the repository’s code. Attatched to you is a vector store that contains all the relevant code
+                        that this project contains. I want you to generate an outline of a portfolio entry with a very specific format. The format is described below:
+                        Your output MUST follow these exact rules and nothing else:
+                        1. Please provide 4 sections in this portfolio that contains the title of that section and then some bullet points about that section.
+                        2. Each section MUST start with a header line in the exact format:
+                            ---SECTION_TITLE: [Title]
+                        3. The section content MUST be in markdown format.
+                        5. The content of the section must be written as quick descriptive bullet points.
+                        6. Include exactly 4 main sections.
 
-                        Focus on the core technologies, architecture, and unique features of the project.
-                        Keep descriptions brief but informative - aim for clarity over comprehensiveness.
-                        """,  # Added comma here
+                        Do not include any additional text formatting outside of this structure. Do not include this in your response: \n.
+
+                        """,
                         event_handler=handler
                     ) as stream:
                         print("[DEBUG] Stream started")
@@ -427,4 +429,91 @@ def generate_outline():
             'Access-Control-Allow-Origin': '*'
         }
     )
+
+
+
+############# Layer 2 ##############
+
+
+
+
+
+@routes.route("/api/expand_topic", methods=["POST"])
+def expand_topic():
+    if not OPENAI_API_KEY or not ASSISTANT_ID:
+        return jsonify({"error": "Missing API keys or IDs"}), 403
+
+    data = request.get_json()
+    topic = data.get("topic")
+    if not topic:
+        return jsonify({"error": "No topic provided"}), 400
+
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        # Immediately create a thread for this topic.
+        thread = client.beta.threads.create()
+        # Send the initial prompt with the topic.
+        client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=f"Expand on the following topic: {topic}"
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    handler = OutlineEventHandler()  # Your existing event handler for streaming.
+    
+    # New instructions: Expand the topic thoroughly but succinctly. Provide detailed, well-structured content with bullet points, technical details, and clear explanations.
+    instructions_text = """
+    Expand on the following subtopic as part of a larger project. 
+    Leverage content from a shared vector store to provide context on how this section relates to the overall project. 
+    Provide detailed, well-structured content with bullet points, technical details, and clear explanations. 
+    Emphasize the connection between this subtopic and the main project goals, using relevant information from the vector store to enrich the discussion.
+    """
+
+    stream_done = False
+
+    # Define the streaming process, which will run on its own thread.
+    def process_stream():
+        nonlocal stream_done
+        try:
+            with client.beta.threads.runs.stream(
+                thread_id=thread.id,
+                assistant_id=ASSISTANT_ID,
+                instructions=instructions_text,
+                event_handler=handler
+            ) as stream:
+                stream.until_done()
+        except Exception as e:
+            handler.queue.append(f"data: {json.dumps({'error': str(e)})}\n\n")
+        finally:
+            stream_done = True
+
+    # Start the streaming process on a new thread.
+    import threading
+    stream_thread = threading.Thread(target=process_stream)
+    stream_thread.start()
+
+    # The event stream sends responses from the assistant back to the caller.
+    def event_stream():
+        while True:
+            if handler.queue:
+                yield handler.queue.pop(0)
+            elif stream_done:
+                break
+            else:
+                time.sleep(0.1)
+
+    return Response(
+        stream_with_context(event_stream()),
+        content_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Type": "text/event-stream",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
+
+
 

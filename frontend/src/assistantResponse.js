@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from "react";
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css'; 
 import "./vsBackendResponse.css";  // Reuse the existing CSS
+import ParallelModal from "./parallelModal"; // Import the new modal
 
 const AssistantResponse = ({ repo, onClose }) => {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showParallelModal, setShowParallelModal] = useState(false);
 
   useEffect(() => {
     console.log("Starting fetch for repo:", repo);
@@ -55,10 +61,7 @@ const AssistantResponse = ({ repo, onClose }) => {
             if (line.startsWith('data: ')) {
               try {
                 const content = line.slice(6); // Remove 'data: ' prefix
-                
-                // Log the raw content for debugging
                 console.log("Raw content:", content);
-                
                 const data = JSON.parse(content);
                 console.log("Parsed data:", data);
                 
@@ -101,9 +104,44 @@ const AssistantResponse = ({ repo, onClose }) => {
         <div className="scrollable-content">
           {loading && <div className="loading-spinner">Generating outline...</div>}
           {error && <p className="error-message">{error}</p>}
-          {text && <pre className="streaming-text">{text}</pre>}
+          {text && (
+            <div className="markdown-content">
+              <ReactMarkdown 
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  // Override pre rendering to maintain original style for code blocks
+                  pre: ({node, ...props}) => <pre className="streaming-text" {...props} />
+                }}
+              >
+                {text}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
+        <button 
+          className="parallelize-button" 
+          onClick={() => setShowParallelModal(true)}
+          disabled={loading || !text}
+          style={{ 
+            position: 'absolute', 
+            bottom: '10px', 
+            right: '10px',
+            padding: '8px 16px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: loading || !text ? 'not-allowed' : 'pointer',
+            opacity: loading || !text ? 0.6 : 1
+          }}
+        >
+          Parallelize & Expand
+        </button>
       </div>
+      {showParallelModal && (
+        <ParallelModal text={text} onClose={() => setShowParallelModal(false)} />
+      )}
     </div>
   );
 };
