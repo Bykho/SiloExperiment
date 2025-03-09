@@ -6,7 +6,7 @@ import 'katex/dist/katex.min.css';
 import "./vsBackendResponse.css";
 import ParallelModal from "./parallelModal";
 
-const AssistantResponse = ({ repo, onClose }) => {
+const AssistantResponse = ({ repo, isDynamicMode, onClose }) => {
   const [text, setText] = useState("");
   const [editableText, setEditableText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -18,13 +18,17 @@ const AssistantResponse = ({ repo, onClose }) => {
 
   useEffect(() => {
     console.log("Starting fetch for repo:", repo);
-    
-    // Create an AbortController to handle cleanup
+
     const controller = new AbortController();
-    
+
+    // Determine endpoint based on the mode
+    const endpoint = isDynamicMode
+      ? "http://127.0.0.1:5000/api/dynamic_generate_outline"
+      : "http://127.0.0.1:5000/api/generate_outline";
+
     async function fetchStream() {
       try {
-        const response = await fetch("http://127.0.0.1:5000/api/generate_outline", {
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ repo }),
@@ -37,13 +41,11 @@ const AssistantResponse = ({ repo, onClose }) => {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        
-        // Process the stream
+
         console.log("Stream connected, processing...");
-        
-        // Set up a buffer for incomplete lines
+
         let buffer = '';
-        
+
         while (true) {
           const { value, done } = await reader.read();
           if (done) {
@@ -51,28 +53,21 @@ const AssistantResponse = ({ repo, onClose }) => {
             break;
           }
           
-          // Decode the chunk and append to buffer
           const chunk = decoder.decode(value, { stream: true });
           buffer += chunk;
-          
-          // Process complete lines in the buffer
           const lines = buffer.split('\n');
-          
-          // Save the last (potentially incomplete) line back to the buffer
           buffer = lines.pop() || '';
           
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
-                const content = line.slice(6); // Remove 'data: ' prefix
+                const content = line.slice(6);
                 const data = JSON.parse(content);
                 
                 if (data.error) {
                   setError(data.error);
                 } else if (data.content !== undefined) {
                   setText(prev => prev + data.content);
-                  
-                  // Auto-scroll to bottom as content comes in
                   if (scrollableRef.current) {
                     scrollableRef.current.scrollTop = scrollableRef.current.scrollHeight;
                   }
@@ -84,7 +79,6 @@ const AssistantResponse = ({ repo, onClose }) => {
           }
         }
         
-        // Once streaming is done, set the editable text to be the same as the final text
         setIsEditing(true);
       } catch (error) {
         if (error.name === 'AbortError') {
@@ -104,21 +98,17 @@ const AssistantResponse = ({ repo, onClose }) => {
       console.log("Cleaning up, aborting fetch");
       controller.abort();
     };
-  }, [repo]);
+  }, [repo, isDynamicMode]);
 
-  // Effect to sync text with editableText once when loading is complete
   useEffect(() => {
     if (!loading && text && !editableText) {
       setEditableText(text);
     }
   }, [loading, text, editableText]);
 
-  // Handle transition from streaming to editing with a subtle delay
   useEffect(() => {
     if (!loading && isEditing && initialRenderRef.current) {
       initialRenderRef.current = false;
-      
-      // A slight delay helps create a smoother transition to edit mode
       const timer = setTimeout(() => {
         if (scrollableRef.current) {
           scrollableRef.current.classList.add('edit-mode-active');
@@ -129,12 +119,10 @@ const AssistantResponse = ({ repo, onClose }) => {
     }
   }, [loading, isEditing]);
 
-  // Handle text editing
   const handleTextChange = (e) => {
     setEditableText(e.target.value);
   };
 
-  // Handle key commands (Ctrl+Enter to parallelize)
   const handleKeyDown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !loading && text) {
       e.preventDefault();

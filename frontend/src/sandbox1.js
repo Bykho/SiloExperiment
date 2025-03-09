@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from "react";
 import "./sandbox1.css";
 import VsBackendResponse from "./vsBackendResponse";
-import AssistantResponse from "./assistantResponse"; // New component for streaming output
+import AssistantResponse from "./assistantResponse";
 
 const Sandbox1 = () => {
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [showAssistantModal, setShowAssistantModal] = useState(false);
+  // New state to track the mode: false = pre‐built, true = dynamic
+  const [isDynamicMode, setIsDynamicMode] = useState(false);
 
   const handleSelectRepo = (repo) => {
     setSelectedRepo(repo.id === selectedRepo ? null : repo);
@@ -19,6 +21,11 @@ const Sandbox1 = () => {
 
   const handleGenerateOutline = () => {
     setShowAssistantModal(true);
+  };
+
+  // Handler for the toggle switch
+  const handleToggleDynamicMode = () => {
+    setIsDynamicMode((prev) => !prev);
   };
 
   useEffect(() => {
@@ -36,6 +43,18 @@ const Sandbox1 = () => {
 
   return (
     <div className="repo-container">
+      {/* New toggle switch for selecting mode */}
+      <div className="mode-toggle">
+        <label>
+          <input
+            type="checkbox"
+            checked={isDynamicMode}
+            onChange={handleToggleDynamicMode}
+          />
+          Use Dynamic Mode
+        </label>
+      </div>
+
       {repos.length > 0 ? (
         <ul className="repo-list">
           {repos.map((repo) => (
@@ -61,11 +80,21 @@ const Sandbox1 = () => {
       ) : (
         <p>No repositories found</p>
       )}
+
+      {/* Pass the mode flag to the modals */}
       {showEntryModal && (
-        <VsBackendResponse repo={selectedRepo} onClose={() => setShowEntryModal(false)} />
+        <VsBackendResponse
+          repo={selectedRepo}
+          isDynamicMode={isDynamicMode}
+          onClose={() => setShowEntryModal(false)}
+        />
       )}
       {showAssistantModal && (
-        <AssistantResponse repo={selectedRepo} onClose={() => setShowAssistantModal(false)} />
+        <AssistantResponse
+          repo={selectedRepo}
+          isDynamicMode={isDynamicMode}
+          onClose={() => setShowAssistantModal(false)}
+        />
       )}
     </div>
   );

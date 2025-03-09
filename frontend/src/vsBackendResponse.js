@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from "react";
 import "./vsBackendResponse.css";
 
-const VsBackendResponse = ({ repo, onClose }) => {
+const VsBackendResponse = ({ repo, isDynamicMode, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [responseData, setResponseData] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
+
+    // Choose the endpoint based on the mode
+    const endpoint = isDynamicMode
+      ? "http://127.0.0.1:5000/api/dynamic_upload_to_vs"
+      : "http://127.0.0.1:5000/api/generate_outline";
+
     const fetchData = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:5000/api/generate_outline", {
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -56,7 +62,7 @@ const VsBackendResponse = ({ repo, onClose }) => {
     return () => {
       controller.abort();
     };
-  }, [repo]);
+  }, [repo, isDynamicMode]);
 
   return (
     <div className="modal-overlay">

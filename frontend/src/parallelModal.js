@@ -2,8 +2,13 @@ import React, { useState, useEffect } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css'; // Import KaTeX CSS
+import 'katex/dist/katex.min.css';
 import "./parallelModal.css";
+
+// Component styling to ensure all text is left-aligned
+const textStyles = {
+  textAlign: 'left'
+};
 
 const ParallelCard = ({ topic, index }) => {
   const [cardText, setCardText] = useState("");
@@ -20,7 +25,6 @@ const ParallelCard = ({ topic, index }) => {
       setSectionTitle(titleMatch[1].trim().replace(/[\[\]]/g, ''));
       const contentWithoutTitle = topic.replace(/SECTION_TITLE:[^\n]+\n?/, '').trim();
     } 
-
 
     async function fetchStream() {
       try {
@@ -89,20 +93,30 @@ const ParallelCard = ({ topic, index }) => {
         {!loading && (
           <div className="card-actions">
             <button className="card-action-button edit-button" title="Edit this section">
-              <span role="img" aria-label="Edit">✏️</span>
+              Edit
             </button>
             <button className="card-action-button refresh-button" title="Regenerate this section">
-              <span role="img" aria-label="Refresh">🔄</span>
+              Refresh
             </button>
           </div>
         )}
       </div>
       {loading && <div className="loading-spinner">Loading...</div>}
       {error && <p className="error-message">{error}</p>}
-      <div className="markdown-content">
+      <div className="markdown-content" style={textStyles}>
         <ReactMarkdown 
             remarkPlugins={[remarkMath]}
             rehypePlugins={[rehypeKatex]}
+            components={{
+              p: ({node, ...props}) => <p style={textStyles} {...props} />,
+              h1: ({node, ...props}) => <h1 style={textStyles} {...props} />,
+              h2: ({node, ...props}) => <h2 style={textStyles} {...props} />,
+              h3: ({node, ...props}) => <h3 style={textStyles} {...props} />,
+              h4: ({node, ...props}) => <h4 style={textStyles} {...props} />,
+              li: ({node, ...props}) => <li style={textStyles} {...props} />,
+              ul: ({node, ...props}) => <ul style={textStyles} {...props} />,
+              ol: ({node, ...props}) => <ol style={textStyles} {...props} />
+            }}
         >
             {cardText}
         </ReactMarkdown>
@@ -139,6 +153,14 @@ const ParallelModal = ({ text, onClose }) => {
     setIsAddingSectionOpen(!isAddingSectionOpen);
   };
 
+  // Handle key commands (Enter to add section)
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && newSectionTitle.trim()) {
+      e.preventDefault();
+      handleAddSection();
+    }
+  };
+
   return (
     <div className="modal-overlay">
       <div className="parallel-modal-content">
@@ -150,7 +172,7 @@ const ParallelModal = ({ text, onClose }) => {
               onClick={toggleAddSection}
               title="Add a new section"
             >
-              <span role="img" aria-label="Add Section">➕ Add Section</span>
+              Add Section
             </button>
             <button className="close-button" onClick={onClose}>✖</button>
           </div>
@@ -164,6 +186,8 @@ const ParallelModal = ({ text, onClose }) => {
               onChange={(e) => setNewSectionTitle(e.target.value)}
               placeholder="Enter section title"
               className="section-title-input"
+              onKeyDown={handleKeyDown}
+              aria-label="New section title"
             />
             <button 
               onClick={handleAddSection}
@@ -189,8 +213,8 @@ const ParallelModal = ({ text, onClose }) => {
                 className="remove-section-button" 
                 onClick={() => handleRemoveSection(idx)}
                 title="Remove this section"
+                aria-label="Remove section"
               >
-                <span role="img" aria-label="Remove">🗑️</span>
               </button>
             </div>
           ))}
