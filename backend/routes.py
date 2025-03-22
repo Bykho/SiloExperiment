@@ -11,6 +11,20 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from typing_extensions import override
 from openai import AssistantEventHandler
 
+
+###############################################################################
+# Overall Tesk list to improve upon SPEED:
+# 1) parallelize fetching of file names
+# 2) parallelize insertion into database
+# 3) fuse steps 1 and 2
+# 4) get better ignoring logic
+# 4a) ignore compiles files
+# 4b) get better logic for ignoring or failing virtual environment uplaods
+# 5) figure out how vector store persistence is gonna work
+#
+###############################################################################
+
+
 routes = Blueprint("routes", __name__)
 def register_routes(app):
     """Register this blueprint with the Flask app."""
@@ -39,7 +53,8 @@ excluded_dir_patterns = [
     re.compile(r"tests?", re.IGNORECASE),
     re.compile(r"docs?", re.IGNORECASE),
     re.compile(r"examples?", re.IGNORECASE),
-    re.compile(r"myenv?", re.IGNORECASE)
+    re.compile(r"myenv?", re.IGNORECASE),
+    re.compile(r".venv", re.IGNORECASE)
 ]
 
 excluded_file_patterns = [
@@ -69,6 +84,9 @@ allowed_extensions = (
     ".sh", ".php", ".tex", ".ps1"
 )
 
+
+### We should add logic here that if a directory is has too many subdirectories,
+### based off of some width metric, we skip that bitch
 def skip_directory(dir_path: str) -> bool:
     lp = dir_path.lower()
     for pattern in excluded_dir_patterns:
@@ -89,33 +107,52 @@ def skip_file(file_path: str) -> bool:
     return False
 
 def fetch_repo_files_recursively(owner: str, repo: str, path: str, headers: dict) -> list:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
     file_list = []
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
-    while api_url:
-        resp = requests.get(api_url, headers=headers)
-        if resp.status_code != 200:
-            print(f"[DEBUG] Failed to fetch {api_url}, status code: {resp.status_code}")
-            break
-        items = resp.json()
-        if not isinstance(items, list):
-            print(f"[DEBUG] Unexpected GitHub API response at {api_url}: {items}")
-            break
-        print(f"[DEBUG] Fetched {len(items)} items from {api_url}.")
-        for item in items:
-            name = item.get("name", "")
-            item_path = item.get("path", "")
-            item_type = item.get("type", "")
-            if item_type == "dir":
-                if not skip_directory(item_path):
-                    file_list.extend(fetch_repo_files_recursively(owner, repo, item_path, headers))
-            elif item_type == "file":
-                if not skip_file(item_path):
-                    print(f"[DEBUG] -> Adding file to final upload list: {item_path}")
-                    file_list.append(item)
-            else:
-                print(f"[DEBUG] Skipping unknown item type: {name}, type={item_type}")
-        api_url = resp.links.get("next", {}).get("url")
-    return file_list
+    
+    def process_directory(dir_path):
+        local_files = []
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{dir_path}"
+        while api_url:
+            resp = requests.get(api_url, headers=headers)
+            if resp.status_code != 200:
+                print(f"[DEBUG] Failed to fetch {api_url}, status code: {resp.status_code}")
+                break
+            items = resp.json()
+            if not isinstance(items, list):
+                print(f"[DEBUG] Unexpected GitHub API response at {api_url}: {items}")
+                break
+            print(f"[DEBUG] Fetched {len(items)} items from {api_url}.")
+            
+            # Separate directories and files
+            dirs_to_process = []
+            for item in items:
+                name = item.get("name", "")
+                item_path = item.get("path", "")
+                item_type = item.get("type", "")
+                if item_type == "dir":
+                    if not skip_directory(item_path):
+                        dirs_to_process.append(item_path)
+                elif item_type == "file":
+                    if not skip_file(item_path):
+                        print(f"[DEBUG] -> Adding file to final upload list: {item_path}")
+                        local_files.append(item)
+                else:
+                    print(f"[DEBUG] Skipping unknown item type: {name}, type={item_type}")
+            
+            # Process subdirectories in parallel
+            if dirs_to_process:
+                with ThreadPoolExecutor(max_workers=min(10, len(dirs_to_process))) as executor:
+                    future_to_dir = {executor.submit(process_directory, dir_path): dir_path for dir_path in dirs_to_process}
+                    for future in as_completed(future_to_dir):
+                        local_files.extend(future.result())
+            
+            api_url = resp.links.get("next", {}).get("url")
+        return local_files
+    
+    # Start with the initial path
+    return process_directory(path)
 
 mime_map = {
     ".cpp": "text/x-c++",
@@ -139,6 +176,8 @@ mime_map = {
 
 SESSION = requests.Session()
 SESSION.verify = True
+
+### Here is the time out. How can we have this be zero? 
 SESSION.timeout = (3.05, 27)
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -158,6 +197,106 @@ def find_assistant_by_name(client, name):
     except Exception as e:
         print(f"[DEBUG] Error listing assistants: {str(e)}")
     return None
+
+def create_dynamic_assistant_helper(repo):
+    """
+    Helper to create a new vector store and dynamic assistant for the repository.
+    Returns a dict with the new vector store and assistant IDs.
+    """
+    if not GITHUB_API_KEY or not OPENAI_API_KEY:
+        raise Exception("Missing API keys")
+        
+    repo_name = repo["name"]
+    print(f"[DEBUG] Starting dynamic upload for repo: {repo_name}")
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    
+    try:
+        # Create a new vector store for dynamic mode
+        new_vector_store = client.beta.vector_stores.create(
+            name=f"vs_{repo_name}",
+            expires_after={"anchor": "last_active_at", "days": 1}
+        )
+        dynamic_vector_store_id = new_vector_store.id
+        print(f"[DEBUG] Created dynamic vector store with id: {dynamic_vector_store_id}")
+    except Exception as e:
+        raise Exception(f"Error creating dynamic vector store: {str(e)}")
+        
+    headers = {"Authorization": f"token {GITHUB_API_KEY}"}
+    github_files = fetch_repo_files_recursively("Bykho", repo_name, "", headers)
+    print(f"[DEBUG] Files to upload: {[f.get('path') for f in github_files]}")
+    attached_file_ids = []
+    errors = []
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # Define the function to process a single file
+    def process_file(file_info):
+        file_path = file_info.get("path", "")
+        download_url = file_info.get("download_url", "")
+        print(f"[DEBUG] Processing file: {file_path}")
+        if not download_url:
+            return None, None
+        try:
+            file_content_resp = SESSION.get(download_url, timeout=10)
+            if file_content_resp.status_code != 200:
+                raise requests.HTTPError(f"HTTP {file_content_resp.status_code}")
+            content = file_content_resp.content
+            if len(content) == 0:
+                print(f"[DEBUG] Skipping empty file: {file_path}")
+                return None, None
+            try:
+                content.decode("utf-8")
+            except UnicodeDecodeError:
+                print(f"[DEBUG] Skipping non-UTF-8 file: {file_path}")
+                return None, None
+            filename = os.path.basename(file_path)
+            extension = os.path.splitext(filename)[1].lower()
+            mimetype = mime_map.get(extension, "text/plain")
+            uploaded_file = openai_upload_with_retry(client, content, filename, mimetype)
+            print(f"[DEBUG] Uploaded file: {file_path}, id: {uploaded_file.id}")
+            vs_file = client.beta.vector_stores.files.create(
+                vector_store_id=dynamic_vector_store_id,
+                file_id=uploaded_file.id
+            )
+            return uploaded_file.id, None
+        except Exception as e:
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            print(f"[DEBUG] {error_msg}")
+            return None, error_msg
+    
+    # Use ThreadPoolExecutor to process files in parallel
+    max_workers = min(20, len(github_files))  # Limit number of threads
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks to the executor
+        future_to_file = {executor.submit(process_file, file_info): file_info for file_info in github_files}
+        
+        # Process results as they complete
+        for future in as_completed(future_to_file):
+            file_id, error = future.result()
+            if file_id:
+                attached_file_ids.append(file_id)
+            if error:
+                errors.append(error)
+    try:
+        # Create a new assistant linked to the dynamic vector store with required parameters
+        new_assistant = client.beta.assistants.create(
+            name=repo_name,
+            instructions="You are an assistant that helps analyze code repositories and generate project outlines.",
+            model="gpt-4-turbo",
+            tools=[{"type": "file_search"}],
+            tool_resources={"file_search": {"vector_store_ids": [dynamic_vector_store_id]}},
+        )
+        dynamic_assistant_id = new_assistant.id
+        print(f"[DEBUG] Created dynamic assistant with id: {dynamic_assistant_id}")
+    except Exception as e:
+        raise Exception(f"Error creating dynamic assistant: {str(e)}")
+    
+    return {
+        "dynamic_vector_store_id": dynamic_vector_store_id,
+        "dynamic_assistant_id": dynamic_assistant_id,
+        "attached_file_ids": attached_file_ids,
+        "errors": errors
+    }
 
 ###############################################################################
 # Pre-built Endpoints
@@ -194,11 +333,15 @@ def upload_to_vs():
     repo_name = repo["name"]
     print(f"[DEBUG] Starting upload_to_vs for repo: {repo_name}")
     headers = {"Authorization": f"token {GITHUB_API_KEY}"}
+    ### This should all be O(1) if we can get fetch_repo_files_recursively
+    ### to run in O(1) (parallel).
     github_files = fetch_repo_files_recursively("Bykho", repo_name, "", headers)
     print(f"[DEBUG] Final list of files to upload: {[f.get('path') for f in github_files]}")
     client = OpenAI(api_key=OPENAI_API_KEY)
     attached_file_ids = []
     errors = []
+
+
     for file_info in github_files:
         file_path = file_info.get("path", "")
         download_url = file_info.get("download_url", "")
@@ -289,7 +432,7 @@ def generate_outline():
                         thread_id=thread.id,
                         assistant_id=PREBUILT_ASSISTANT_ID,
                         instructions="""
-                        Generate a concise, well-structured outline for an engineering portfolio entry based solely on the repository’s code.
+                        Generate a concise, well-structured outline for an engineering portfolio entry based solely on the repository's code.
                         Attached to you is a vector store that contains all the relevant code for this project.
                         Follow this exact format:
                         1. Provide 4 sections, each starting with a header in the format: ---SECTION_TITLE: [Title]
@@ -341,6 +484,10 @@ def expand_topic():
     try:
         client = OpenAI(api_key=OPENAI_API_KEY)
         thread = client.beta.threads.create()
+
+        ### Why do we open this messages thread with the assistant before sending in the process
+        ### stream?
+
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
@@ -381,6 +528,7 @@ def expand_topic():
                 break
             else:
                 time.sleep(0.1)
+    ### What's the deal with the headers here? What is the effect of Cache-Control
     return Response(
         stream_with_context(event_stream()),
         content_type="text/event-stream",
@@ -401,7 +549,7 @@ def dynamic_upload_to_vs():
     """
     Dynamic Build Entry endpoint:
     - Creates a new vector store specific to the repository.
-    - Uploads the repository’s files into that new vector store.
+    - Uploads the repository's files into that new vector store.
     - Creates a new assistant linked to the new vector store.
     The assistant is named after the repository so that later lookups are simple.
     """
@@ -411,86 +559,25 @@ def dynamic_upload_to_vs():
     repo = data.get("repo")
     if not repo or "name" not in repo:
         return jsonify({"error": "Invalid repository data"}), 400
-    repo_name = repo["name"]
-    print(f"[DEBUG] Starting dynamic upload for repo: {repo_name}")
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    
     try:
-        # Create a new vector store for dynamic mode
-        new_vector_store = client.beta.vector_stores.create(
-            name=f"vs_{repo_name}"
-        )
-        dynamic_vector_store_id = new_vector_store.id
-        print(f"[DEBUG] Created dynamic vector store with id: {dynamic_vector_store_id}")
-    except Exception as e:
-        return jsonify({"error": f"Error creating dynamic vector store: {str(e)}"}), 500
-    headers = {"Authorization": f"token {GITHUB_API_KEY}"}
-    github_files = fetch_repo_files_recursively("Bykho", repo_name, "", headers)
-    print(f"[DEBUG] Files to upload: {[f.get('path') for f in github_files]}")
-    attached_file_ids = []
-    errors = []
-    for file_info in github_files:
-        file_path = file_info.get("path", "")
-        download_url = file_info.get("download_url", "")
-        print(f"[DEBUG] Processing file: {file_path}")
-        if not download_url:
-            continue
-        try:
-            file_content_resp = SESSION.get(download_url, timeout=10)
-            if file_content_resp.status_code != 200:
-                raise requests.HTTPError(f"HTTP {file_content_resp.status_code}")
-            content = file_content_resp.content
-            if len(content) == 0:
-                print(f"[DEBUG] Skipping empty file: {file_path}")
-                continue
-            try:
-                content.decode("utf-8")
-            except UnicodeDecodeError:
-                print(f"[DEBUG] Skipping non-UTF-8 file: {file_path}")
-                continue
-            filename = os.path.basename(file_path)
-            extension = os.path.splitext(filename)[1].lower()
-            mimetype = mime_map.get(extension, "text/plain")
-            uploaded_file = openai_upload_with_retry(client, content, filename, mimetype)
-            print(f"[DEBUG] Uploaded file: {file_path}, id: {uploaded_file.id}")
-            client.beta.vector_stores.files.create(
-                vector_store_id=dynamic_vector_store_id,
-                file_id=uploaded_file.id
-            )
-            attached_file_ids.append(uploaded_file.id)
-        except Exception as e:
-            error_msg = f"Error processing {file_path}: {str(e)}"
-            print(f"[DEBUG] {error_msg}")
-            errors.append(error_msg)
-    try:
-        # Create a new assistant linked to the dynamic vector store with required parameters
-        new_assistant = client.beta.assistants.create(
-            name=repo_name,
-            instructions="You are an assistant that helps analyze code repositories and generate project outlines.",
-            model="gpt-4-turbo",
-            tools=[{"type": "file_search"}],
-            tool_resources={"file_search": {"vector_store_ids": [dynamic_vector_store_id]}},
-        )
-        dynamic_assistant_id = new_assistant.id
-        print(f"[DEBUG] Created dynamic assistant with id: {dynamic_assistant_id}")
-    except Exception as e:
+        result = create_dynamic_assistant_helper(repo)
         return jsonify({
-            "error": f"Error creating dynamic assistant: {str(e)}",
-            "attached_file_ids": attached_file_ids,
-            "errors": errors
-        }), 500
-    return jsonify({
-        "message": "Dynamic upload complete.",
-        "dynamic_vector_store_id": dynamic_vector_store_id,
-        "dynamic_assistant_id": dynamic_assistant_id,
-        "attached_file_ids": attached_file_ids,
-        "errors": errors
-    })
+            "message": "Dynamic upload complete.",
+            "dynamic_vector_store_id": result["dynamic_vector_store_id"],
+            "dynamic_assistant_id": result["dynamic_assistant_id"],
+            "attached_file_ids": result["attached_file_ids"],
+            "errors": result["errors"]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @routes.route("/api/dynamic_generate_outline", methods=["POST"])
 def dynamic_generate_outline():
     """
     Dynamic Generate Outline endpoint:
     - Looks up the dynamic assistant by repository name.
+    - If not found, automatically creates a new vector store and assistant.
     - Streams an outline generated by the dynamic assistant.
     """
     if not OPENAI_API_KEY:
@@ -502,19 +589,22 @@ def dynamic_generate_outline():
     repo_name = repo["name"]
     print(f"[DEBUG] Starting dynamic outline generation for repo: {repo_name}")
     client = OpenAI(api_key=OPENAI_API_KEY)
-    try:
+
+    # Try to find an existing dynamic assistant
+    dynamic_assistant = find_assistant_by_name(client, repo_name)
+    if not dynamic_assistant:
+        print(f"[DEBUG] Dynamic assistant not found for repo: {repo_name}. Creating one...")
+        try:
+            create_dynamic_assistant_helper(repo)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        # Try finding it again after creation
         dynamic_assistant = find_assistant_by_name(client, repo_name)
         if not dynamic_assistant:
-            return jsonify({
-                "error": "Dynamic assistant not found. Please build the entry first."
-            }), 404
-        dynamic_assistant_id = dynamic_assistant.id
-        print(f"[DEBUG] Retrieved dynamic assistant with id: {dynamic_assistant_id}")
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to retrieve dynamic assistant.",
-            "details": str(e)
-        }), 500
+            return jsonify({"error": "Failed to create dynamic assistant."}), 500
+
+    dynamic_assistant_id = dynamic_assistant.id
+    print(f"[DEBUG] Retrieved dynamic assistant with id: {dynamic_assistant_id}")
 
     def event_stream():
         try:
@@ -535,8 +625,8 @@ def dynamic_generate_outline():
                         thread_id=thread.id,
                         assistant_id=dynamic_assistant_id,
                         instructions="""
-                        Generate a concise, well-structured outline for an engineering portfolio entry based solely on the repository’s code.
-                        The repository’s code is in the dynamic vector store attached to you.
+                        Generate a concise, well-structured outline for an engineering portfolio entry based solely on the repository's code.
+                        The repository's code is in the dynamic vector store attached to you.
                         Follow this exact format:
                         1. Provide 4 sections, each starting with a header: ---SECTION_TITLE: [Title]
                         2. Under each header, list markdown bullet points.

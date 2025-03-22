@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from "react";
 import "./sandbox1.css";
-import VsBackendResponse from "./vsBackendResponse";
 import AssistantResponse from "./assistantResponse";
 
 const Sandbox1 = () => {
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
-  const [showEntryModal, setShowEntryModal] = useState(false);
   const [showAssistantModal, setShowAssistantModal] = useState(false);
   // New state to track the mode: false = pre‐built, true = dynamic
   const [isDynamicMode, setIsDynamicMode] = useState(false);
@@ -15,10 +13,8 @@ const Sandbox1 = () => {
     setSelectedRepo(repo.id === selectedRepo ? null : repo);
   };
 
-  const handleBuildEntry = () => {
-    setShowEntryModal(true);
-  };
-
+  // Remove the separate Build Entry handler.
+  // Now, only one handler is needed:
   const handleGenerateOutline = () => {
     setShowAssistantModal(true);
   };
@@ -43,7 +39,7 @@ const Sandbox1 = () => {
 
   return (
     <div className="repo-container">
-      {/* New toggle switch for selecting mode */}
+      {/* Toggle switch for selecting mode */}
       <div className="mode-toggle">
         <label>
           <input
@@ -65,14 +61,9 @@ const Sandbox1 = () => {
             >
               {repo.name}
               {selectedRepo?.id === repo.id && (
-                <>
-                  <button className="build-entry-btn" onClick={handleBuildEntry}>
-                    Build Entry?
-                  </button>
-                  <button className="generate-outline-btn" onClick={handleGenerateOutline}>
-                    Generate Outline
-                  </button>
-                </>
+                <button className="generate-outline-btn" onClick={handleGenerateOutline}>
+                  Generate Outline
+                </button>
               )}
             </li>
           ))}
@@ -81,14 +72,7 @@ const Sandbox1 = () => {
         <p>No repositories found</p>
       )}
 
-      {/* Pass the mode flag to the modals */}
-      {showEntryModal && (
-        <VsBackendResponse
-          repo={selectedRepo}
-          isDynamicMode={isDynamicMode}
-          onClose={() => setShowEntryModal(false)}
-        />
-      )}
+      {/* The AssistantResponse modal will call the appropriate endpoint */}
       {showAssistantModal && (
         <AssistantResponse
           repo={selectedRepo}
