@@ -6,7 +6,7 @@ import 'katex/dist/katex.min.css';
 import "./vsBackendResponse.css";
 import ParallelModal from "./parallelModal";
 
-const AssistantResponse = ({ repo, isDynamicMode, onClose }) => {
+const AssistantResponse = ({ repo, onClose }) => {
   const [text, setText] = useState("");
   const [editableText, setEditableText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -21,10 +21,8 @@ const AssistantResponse = ({ repo, isDynamicMode, onClose }) => {
 
     const controller = new AbortController();
 
-    // Determine endpoint based on the mode
-    const endpoint = isDynamicMode
-      ? "http://127.0.0.1:5000/api/dynamic_generate_outline"
-      : "http://127.0.0.1:5000/api/generate_outline";
+    // Always use the dynamic endpoint
+    const endpoint = "http://127.0.0.1:5000/api/dynamic_generate_outline";
 
     async function fetchStream() {
       try {
@@ -98,7 +96,7 @@ const AssistantResponse = ({ repo, isDynamicMode, onClose }) => {
       console.log("Cleaning up, aborting fetch");
       controller.abort();
     };
-  }, [repo, isDynamicMode]);
+  }, [repo]);
 
   useEffect(() => {
     if (!loading && text && !editableText) {
@@ -182,7 +180,11 @@ const AssistantResponse = ({ repo, isDynamicMode, onClose }) => {
       </div>
       
       {showParallelModal && (
-        <ParallelModal text={editableText} onClose={() => setShowParallelModal(false)} />
+        <ParallelModal 
+          text={editableText} 
+          repoName={repo.name} // Pass the repo name here
+          onClose={() => setShowParallelModal(false)} 
+        />
       )}
     </div>
   );

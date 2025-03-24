@@ -10,7 +10,7 @@ const textStyles = {
   textAlign: 'left'
 };
 
-const ParallelCard = ({ topic, index }) => {
+const ParallelCard = ({ topic, index, repoName }) => {
   const [cardText, setCardText] = useState("");
   const [sectionTitle, setSectionTitle] = useState(`Section ${index + 1}`);
   const [loading, setLoading] = useState(true);
@@ -28,10 +28,13 @@ const ParallelCard = ({ topic, index }) => {
 
     async function fetchStream() {
       try {
-        const response = await fetch("http://127.0.0.1:5000/api/expand_topic", {
+        const response = await fetch("http://127.0.0.1:5000/api/dynamic_expand_topic", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ topic }),
+          body: JSON.stringify({ 
+            topic,
+            repo: { name: repoName } // Include the repository name here
+          }),
           signal: controller.signal,
         });
 
@@ -84,7 +87,7 @@ const ParallelCard = ({ topic, index }) => {
     return () => {
       controller.abort();
     };
-  }, [topic, index]);
+  }, [topic, index, repoName]);
 
   return (
     <div className="parallel-card">
@@ -125,7 +128,7 @@ const ParallelCard = ({ topic, index }) => {
   );
 };
 
-const ParallelModal = ({ text, onClose }) => {
+const ParallelModal = ({ text, repoName, onClose }) => {
   const [sections, setSections] = useState([]);
   const [isAddingSectionOpen, setIsAddingSectionOpen] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
@@ -208,7 +211,11 @@ const ParallelModal = ({ text, onClose }) => {
         <div className="parallel-grid">
           {sections.map((topic, idx) => (
             <div key={idx} className="card-container">
-              <ParallelCard topic={topic} index={idx} />
+              <ParallelCard 
+                topic={topic} 
+                index={idx} 
+                repoName={repoName} // Pass the repository name to the card
+              />
               <button 
                 className="remove-section-button" 
                 onClick={() => handleRemoveSection(idx)}
